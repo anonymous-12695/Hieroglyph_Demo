@@ -32,7 +32,7 @@ source venv/bin/activate
 Once the virtual environment is activated, install the package via pip:
 
 ```
-pip install git+https://github.com/anonymous-12695/Hyroglyph_demo
+pip install git+https://github.com/anonymous-12695/Hieroglyph_Demo
 ```
 ℹ️ **Note:** This command installs the demo package and all required dependencies inside the virtual environment you activated in step 1.
 
