@@ -531,48 +531,6 @@ def process_and_label_image(img, bboxes, direction, model2, centered_lines, arra
 
 
 
-
-def load_Hierogloph_models(base_dir):
-    # Basisverzeichnis
-    os.makedirs(base_dir, exist_ok=True)
-
-
-    # Modell 1: YOLO11n_Leserichtung.pt
-    path1 = os.path.join(base_dir, "YOLO11n_Leserichtung.pt")
-    url1 = "https://github.com/src/YOLO11n_Leserichtung.pt"
-    if not os.path.exists(path1):
-        print("Lade YOLO11n_Leserichtung.pt herunter...")
-        r = requests.get(url1)
-        with open(path1, "wb") as f:
-            f.write(r.content)
-        print("Download abgeschlossen.")
-    else:
-        print("YOLO11n_Leserichtung.pt existiert bereits.")
-
-    # Modell 2: YOLO11m_15_01_000001.pt
-    path2 = os.path.join(base_dir, "YOLO11m_15_01_000001.pt")
-    url2 = "https://github.com/src/YOLO11m_15_01_000001.pt"
-    if not os.path.exists(path2):
-        print("Lade YOLO11m_15_01_000001.pt herunter...")
-        r = requests.get(url2)
-        with open(path2, "wb") as f:
-            f.write(r.content)
-        print("Download abgeschlossen.")
-    else:
-        print("YOLO11m_15_01_000001.pt existiert bereits.")
-
-    # Modell 3: segm_4000_512_01.pth
-    path3 = os.path.join(base_dir, "segm_4000_512_01.pth")
-    url3 = "https://github.com/src/segm_4000_512_01.pth"
-    if not os.path.exists(path3):
-        print("Lade segm_4000_512_01.pth herunter...")
-        r = requests.get(url3)
-        with open(path3, "wb") as f:
-            f.write(r.content)
-        print("Download abgeschlossen.")
-    else:
-        print("segm_4000_512_01.pth existiert bereits.")
-        
         
 
 def draw_bbs_lines(frame,bboxes_hyr,arrangement,centered_lines):

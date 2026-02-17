@@ -71,7 +71,6 @@ from detectron2.engine import DefaultPredictor
 # -------------------------------------------------------------------------
 print("\nLoading hieroglyph models...")
 weights_dir = r"weights"
-load_Hierogloph_models(weights_dir)
 
 # YOLO models for hieroglyph pipeline
 model1 = YOLO(os.path.join(weights_dir, "YOLO11n_Leserichtung.pt"))   # reading direction
