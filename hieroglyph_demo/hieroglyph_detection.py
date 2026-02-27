@@ -6,6 +6,8 @@ import requests
 import os
 import sys
 import subprocess
+import re
+from urllib.parse import urlparse
 
 
 def check_collision(line, bboxes):
@@ -553,46 +555,119 @@ def draw_bbs_lines(frame,bboxes_hyr,arrangement,centered_lines):
 
 
 
+def _is_lfs_pointer(data: bytes) -> bool:
+    return data.startswith(b"version https://git-lfs.github.com/spec/v1")
+
+def _parse_raw_github_owner_repo(url: str):
+    # supports:
+    # https://raw.githubusercontent.com/<owner>/<repo>/<branch>/<path>
+    # https://github.com/<owner>/<repo>/raw/<branch>/<path>
+    p = urlparse(url)
+    parts = p.path.strip("/").split("/")
+    if "raw.githubusercontent.com" in p.netloc:
+        # owner/repo/branch/...
+        if len(parts) < 4:
+            raise ValueError(f"Unbekanntes GitHub-RAW-Format: {url}")
+        return parts[0], parts[1]
+    if "github.com" in p.netloc and len(parts) >= 5 and parts[2] == "raw":
+        # owner/repo/raw/branch/...
+        return parts[0], parts[1]
+    raise ValueError(f"URL-Format nicht unterstützt: {url}")
+
+def _download_github_lfs(owner: str, repo: str, oid: str, size: int, dest_path: str):
+    batch_url = f"https://github.com/{owner}/{repo}.git/info/lfs/objects/batch"
+    headers = {
+        "Accept": "application/vnd.git-lfs+json",
+        "Content-Type": "application/vnd.git-lfs+json",
+        "User-Agent": "Mozilla/5.0"
+    }
+    payload = {
+        "operation": "download",
+        "transfers": ["basic"],
+        "objects": [{"oid": oid, "size": size}]
+    }
+
+    resp = requests.post(batch_url, json=payload, headers=headers, timeout=60)
+    resp.raise_for_status()
+    j = resp.json()
+
+    obj = j["objects"][0]
+    href = obj["actions"]["download"]["href"]
+    extra_headers = obj["actions"]["download"].get("header", {})
+
+    r = requests.get(href, headers={**extra_headers, "User-Agent": "Mozilla/5.0"}, stream=True, timeout=120)
+    r.raise_for_status()
+
+    with open(dest_path, "wb") as f:
+        for chunk in r.iter_content(chunk_size=1024 * 1024):
+            if chunk:
+                f.write(chunk)
+
+def download_github_file_raw_or_lfs(url: str, dest_path: str):
+    r = requests.get(url, timeout=60, headers={"User-Agent": "Mozilla/5.0"})
+    r.raise_for_status()
+    data = r.content
+
+    if not _is_lfs_pointer(data):
+        with open(dest_path, "wb") as f:
+            f.write(data)
+        return
+
+    # LFS pointer -> oid & size parsen
+    txt = data.decode("utf-8", errors="replace")
+    m_oid = re.search(r"oid sha256:([0-9a-f]{64})", txt)
+    m_size = re.search(r"size (\d+)", txt)
+    if not (m_oid and m_size):
+        raise RuntimeError("LFS-Pointer erkannt, aber oid/size konnte nicht geparst werden.")
+
+    oid = m_oid.group(1)
+    size = int(m_size.group(1))
+    owner, repo = _parse_raw_github_owner_repo(url)
+
+    _download_github_lfs(owner, repo, oid, size, dest_path)
+
+def is_bad_weight_file(path: str) -> bool:
+    if not os.path.exists(path):
+        return True
+    # sehr kleine Dateien sind oft Pointer/HTML statt Modell
+    if os.path.getsize(path) < 50_000:  # 50 KB
+        return True
+    # Pointer-Erkennung
+    with open(path, "rb") as f:
+        head = f.read(80)
+    return head.startswith(b"version https://git-lfs.github.com/spec/v1")
+
 def load_Hierogloph_models(base_dir):
-    # Basisverzeichnis
     os.makedirs(base_dir, exist_ok=True)
 
-    # Modell 1: YOLO11n_Leserichtung.pt
+    # Modell 1
     path1 = os.path.join(base_dir, "YOLO11n_Leserichtung.pt")
-    url1 = "https://github.com/anonymous-12695/Hieroglyph_Demo/tree/main/weights/YOLO11n_Leserichtung.pt"
-    if not os.path.exists(path1):
-        print("Lade YOLO11n_Leserichtung.pt herunter...")
-        r = requests.get(url1)
-        with open(path1, "wb") as f:
-            f.write(r.content)
+    url1  = "https://raw.githubusercontent.com/anonymous-12695/Hieroglyph_Demo/main/weights/YOLO11n_Leserichtung.pt"
+    if is_bad_weight_file(path1):
+        print("Lade YOLO11n_Leserichtung.pt herunter (inkl. Git-LFS)...")
+        download_github_file_raw_or_lfs(url1, path1)
         print("Download abgeschlossen.")
     else:
-        print("YOLO11n_Leserichtung.pt existiert bereits.")
+        print("YOLO11n_Leserichtung.pt existiert bereits und sieht gültig aus.")
 
-    # Modell 2: YOLO11m_15_01_000001.pt
     path2 = os.path.join(base_dir, "YOLO11m_15_01_000001.pt")
-    url2 = "https://github.com/anonymous-12695/Hieroglyph_Demo/tree/main/weights/YOLO11m_15_01_000001.pt"
-    if not os.path.exists(path2):
-        print("Lade YOLO11m_15_01_000001.pt herunter...")
-        r = requests.get(url2)
-        with open(path2, "wb") as f:
-            f.write(r.content)
+    url2  = "https://raw.githubusercontent.com/anonymous-12695/Hieroglyph_Demo/main/weights/YOLO11m_15_01_000001.pt"
+    if is_bad_weight_file(path2):
+        print("Lade YOLO11m_15_01_000001.pt herunter (inkl. Git-LFS)...")
+        download_github_file_raw_or_lfs(url2, path2)
         print("Download abgeschlossen.")
     else:
-        print("YOLO11m_15_01_000001.pt existiert bereits.")
+        print("YOLO11m_15_01_000001.pt existiert bereits und sieht gültig aus.")
 
-    # Modell 3: segm_4000_512_01.pth
     path3 = os.path.join(base_dir, "segm_4000_512_01.pth")
-    url3 = "https://github.com/anonymous-12695/Hieroglyph_Demo/tree/main/weights/segm_4000_512_01.pth"
-    if not os.path.exists(path3):
-        print("Lade segm_4000_512_01.pth herunter...")
-        r = requests.get(url3)
-        with open(path3, "wb") as f:
-            f.write(r.content)
+    url3  = "https://raw.githubusercontent.com/anonymous-12695/Hieroglyph_Demo/main/weights/segm_4000_512_01.pth"
+    if is_bad_weight_file(path3):
+        print("Lade segm_4000_512_01.pth herunter (inkl. Git-LFS)...")
+        download_github_file_raw_or_lfs(url3, path3)
         print("Download abgeschlossen.")
     else:
-        print("segm_4000_512_01.pth existiert bereits.")
-
+        print("segm_4000_512_01.pth existiert bereits und sieht gültig aus.")
+        
 def draw_classes(frame,predicted_classes, all_image_crops_and_bboxes,font_size):
     for predicted_class, bbox in zip(predicted_classes, all_image_crops_and_bboxes):
             x1, y1, x2, y2 = bbox[1].astype(int)
